@@ -1,0 +1,19 @@
+# Datos originales del INEC
+data/*
+!data/.gitkeep
+
+# Archivos temporales de R
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Archivos de configuración privados
+config/*secreto*
+config/*credencial*
+config/*.env
+
+# Archivos temporales de Quarto
+.quarto/
+*_cache/
+*_files/
