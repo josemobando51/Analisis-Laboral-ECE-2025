@@ -1,27 +1,494 @@
+
 ---
-title: "01_exploracion"
-author: "Jose Mario Murillo"
-format: html
-editor: visual
+title: "Análisis exploratorio de la ECE"
+subtitle: "IV trimestre de 2025"
+author: "José Mario Murillo"
+format:
+  html:
+    toc: true
+    number-sections: true
+editor: source
+execute:
+  echo: true
+  warning: false
+  message: false
 ---
 
-## Quarto
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+# Importación de los datos
 
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+En esta sección se importa la Encuesta Continua de
+Empleo (ECE) correspondiente al IV trimestre de 2025,
+publicada por el Instituto Nacional de Estadística
+y Censos (INEC).
 
 ```{r}
-1 + 1
+# Cargar paquetes
+library(haven)
+library(here)
+
+# Importar la base original
+ece <- read_sav(
+  here("data", "ECE_IV_2025.sav")
+)
+
+# Consultar las dimensiones
+dim(ece)
 ```
 
-You can add options to executable code like this
+
+# Selección de la población de estudio
+
+Se seleccionan las personas ocupadas de 15 años
+o más, nacidas en Costa Rica y Nicaragua.
 
 ```{r}
-#| echo: false
-2 * 2
+library(dplyr)
+
+# Filtrar la población de interés
+ece_filtrada <- ece |>
+  filter(
+    Ocupado == 1,
+    Edad >= 15,
+    as_factor(Pais_nacimiento) %in%
+      c("Costa Rica", "Nicaragua")
+  )
+
+# Consultar las dimensiones de la base filtrada
+dim(ece_filtrada)
+
+# Cantidad de observaciones por país de nacimiento
+table(droplevels(as_factor(ece_filtrada$Pais_nacimiento)))
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+
+# Selección de variables de estudio
+
+A partir de la población previamente filtrada, se
+seleccionan las nueve variables necesarias para
+comparar las condiciones laborales de las personas
+nacidas en Costa Rica y Nicaragua.
+
+```{r}
+# Seleccionar las variables de interés
+ece_analisis <- ece_filtrada |>
+  select(
+    Pais_nacimiento,
+    Edad,
+    Sexo,
+    Amos_educacion,
+    Ingreso_bruto_total_trabajo_hora,
+    Rama_actividad,
+    Formalidad_informalidad,
+    Condicion_aseguramiento,
+    Factor_ponderacion
+  )
+
+# Consultar las dimensiones
+dim(ece_analisis)
+
+# Consultar las variables seleccionadas
+names(ece_analisis)
+```
+
+# Identificar los códigos oficiales del INEC
+```{r}
+# Identificar los códigos oficiales del INEC
+
+attr(ece_analisis$Pais_nacimiento, "labels")
+attr(ece_analisis$Sexo, "labels")
+attr(ece_analisis$Rama_actividad, "labels")
+attr(ece_analisis$Formalidad_informalidad, "labels")
+attr(ece_analisis$Condicion_aseguramiento, "labels")
+```
+
+# Transformación de variables categóricas
+
+Se convierten los códigos numéricos de las variables
+categóricas en sus etiquetas originales del INEC,
+para facilitar la interpretación de los datos.
+
+```{r}
+# Crear una base con categorías legibles
+ece_legible <- ece_analisis |>
+  mutate(
+    Pais_nacimiento = as_factor(Pais_nacimiento),
+    Sexo = as_factor(Sexo),
+    Rama_actividad = as_factor(Rama_actividad),
+    Formalidad_informalidad = as_factor(Formalidad_informalidad),
+    Condicion_aseguramiento = as_factor(Condicion_aseguramiento)
+  )
+
+# Visualizar algunas observaciones
+ece_legible |>
+  select(
+    Pais_nacimiento,
+    Sexo,
+    Rama_actividad,
+    Formalidad_informalidad,
+    Condicion_aseguramiento
+  ) |>
+  head(10)
+```
+
+
+# Revisión de valores faltantes
+
+Se identifican los valores faltantes de las nueve
+variables seleccionadas para determinar la
+disponibilidad de información en la base de datos.
+
+```{r}
+# Calcular valores faltantes por variable
+faltantes <- data.frame(
+  Variable = names(ece_legible),
+  Faltantes = colSums(is.na(ece_legible)),
+  Porcentaje = round(
+    colMeans(is.na(ece_legible)) * 100, 2
+  )
+)
+
+# Mostrar resultados
+faltantes
+```
+
+
+## Valores faltantes según país de nacimiento
+
+Se analiza la disponibilidad de información sobre
+ingresos laborales para cada población.
+
+```{r}
+ece_legible |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Total = n(),
+    Sin_ingreso = sum(is.na(Ingreso_bruto_total_trabajo_hora)),
+    Con_ingreso = sum(!is.na(Ingreso_bruto_total_trabajo_hora)),
+    Porcentaje_faltante = round(
+      mean(is.na(Ingreso_bruto_total_trabajo_hora)) * 100, 2
+    ),
+    .groups = "drop"
+  )
+```
+
+
+## Revisión de los ingresos laborales
+
+Se examinan los ingresos brutos por hora para
+identificar valores iguales a cero, negativos
+y posibles valores extremos en ambas poblaciones.
+
+```{r}
+# Examinar los ingresos según país de nacimiento
+
+ece_legible |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Ingresos_cero = sum(
+      Ingreso_bruto_total_trabajo_hora == 0,
+      na.rm = TRUE
+    ),
+    Ingresos_negativos = sum(
+      Ingreso_bruto_total_trabajo_hora < 0,
+      na.rm = TRUE
+    ),
+    Ingreso_minimo = min(
+      Ingreso_bruto_total_trabajo_hora,
+      na.rm = TRUE
+    ),
+    Ingreso_maximo = max(
+      Ingreso_bruto_total_trabajo_hora,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+```
+
+
+## Revisión de posibles valores atípicos en los ingresos
+
+Durante la exploración inicial se identificaron ingresos
+mínimos considerablemente bajos y máximos elevados.
+Por esta razón, se calcularán los percentiles 1 y 99,
+así como la mediana, para examinar la distribución
+de los ingresos por hora y determinar qué tan alejados
+se encuentran los valores extremos del resto de las
+observaciones.
+
+```{r}
+# Examinar la distribución de ingresos por país
+
+ece_legible |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Percentil_1 = quantile(
+      as.numeric(Ingreso_bruto_total_trabajo_hora),
+      0.01, na.rm = TRUE
+    ),
+    Mediana = median(
+      as.numeric(Ingreso_bruto_total_trabajo_hora),
+      na.rm = TRUE
+    ),
+    Percentil_99 = quantile(
+      as.numeric(Ingreso_bruto_total_trabajo_hora),
+      0.99, na.rm = TRUE
+    ),
+    .groups = "drop"
+  )
+```
+
+
+
+## Verificación de los factores de ponderación
+
+Se revisan los factores de ponderación de ambas
+poblaciones para comprobar que no existan valores
+iguales a cero, negativos o faltantes. Esto permitirá
+verificar su validez básica antes de utilizarlos
+en los cálculos estadísticos ponderados.
+
+```{r}
+ece_legible |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Factor_minimo = min(Factor_ponderacion, na.rm = TRUE),
+    Factor_maximo = max(Factor_ponderacion, na.rm = TRUE),
+    Factores_cero = sum(Factor_ponderacion == 0, na.rm = TRUE),
+    Factores_negativos = sum(Factor_ponderacion < 0, na.rm = TRUE),
+    Factores_faltantes = sum(is.na(Factor_ponderacion)),
+    .groups = "drop"
+  )
+```
+
+
+## Revisión de categorías especiales
+
+Se examinan las categorías de las variables
+educativas y laborales para identificar posibles
+respuestas no especificadas o códigos especiales
+que requieran tratamiento antes del análisis.
+
+```{r}
+# Revisar los años de escolaridad
+table(
+  as.numeric(ece_legible$Amos_educacion),
+  useNA = "ifany"
+)
+
+# Revisar las actividades económicas
+table(
+  ece_legible$Rama_actividad,
+  useNA = "ifany"
+)
+
+# Revisar la formalidad laboral
+table(
+  ece_legible$Formalidad_informalidad,
+  useNA = "ifany"
+)
+
+# Revisar el aseguramiento laboral
+table(
+  ece_legible$Condicion_aseguramiento,
+  useNA = "ifany"
+)
+```
+
+
+## Tratamiento de categorías no especificadas
+
+Se identificaron dos observaciones con escolaridad
+no especificada (código 99) y diez con actividad
+económica no especificada. Estos valores se
+transformarán en NA para evitar incorporarlos
+indebidamente en los cálculos estadísticos.
+
+```{r}
+
+# Crear la base con los valores especiales corregidos
+
+ece_depurada <- ece_legible |>
+  mutate(
+    Edad = na_if(
+      as.numeric(Edad), 99
+    ),
+    Amos_educacion = na_if(
+      as.numeric(Amos_educacion), 99
+    ),
+    Rama_actividad = na_if(
+      as.character(Rama_actividad), "No especificado"
+    )
+  )
+
+# Comprobar los cambios
+ece_depurada |>
+  summarise(
+    Total_observaciones = n(),
+    Edad_faltante = sum(is.na(Edad)),
+    Escolaridad_faltante = sum(is.na(Amos_educacion)),
+    Actividad_faltante = sum(is.na(Rama_actividad))
+  )
+
+```
+
+
+
+# Caracterización sociodemográfica
+
+En esta sección se comparan las características
+sociodemográficas de las personas ocupadas nacidas
+en Costa Rica y Nicaragua, considerando la edad,
+el sexo y los años de escolaridad.
+
+## Análisis de la edad
+
+Se calculan las edades promedio ponderadas, mínimas
+y máximas de ambas poblaciones, con el propósito
+de identificar diferencias en sus características
+etarias.
+
+```{r}
+
+# Estadísticas descriptivas de la edad
+
+ece_depurada |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Observaciones = n(),
+
+    Edad_promedio = round(
+      weighted.mean(
+        Edad, Factor_ponderacion, na.rm = TRUE
+      ),
+      2
+    ),
+
+    Edad_minima = min(Edad, na.rm = TRUE),
+
+    Edad_maxima = max(Edad, na.rm = TRUE),
+
+    .groups = "drop"
+  )
+
+```
+
+
+
+### Identificación de códigos especiales en la edad
+
+Se revisan las edades más elevadas de la muestra
+para comprobar la presencia de posibles códigos
+especiales o valores que requieran verificación.
+
+```{r}
+# Consultar las etiquetas de la variable Edad
+attr(ece$Edad, "labels")
+
+# Revisar cuántas personas tienen 90 años o más
+table(
+  as.numeric(ece_depurada$Edad)[
+    as.numeric(ece_depurada$Edad) >= 90
+  ]
+)
+```
+
+
+
+## Análisis del sexo
+
+Se analiza la distribución porcentual de hombres
+y mujeres ocupados según su país de nacimiento,
+utilizando los factores de ponderación de la ECE.
+
+```{r}
+# Distribución por sexo y país de nacimiento
+
+ece_depurada |>
+  group_by(Pais_nacimiento, Sexo) |>
+  summarise(
+    Observaciones = n(),
+    Peso_total = sum(Factor_ponderacion),
+    .groups = "drop_last"
+  ) |>
+  mutate(
+    Porcentaje = round(
+      Peso_total / sum(Peso_total) * 100, 2
+    )
+  ) |>
+  ungroup() |>
+  select(Pais_nacimiento, Sexo, Observaciones, Porcentaje)
+```
+
+
+## Análisis de la escolaridad
+
+Se comparan los años promedio de escolaridad de
+las personas ocupadas de 15 años o más, nacidas
+en Costa Rica y Nicaragua, utilizando los factores
+de ponderación de la ECE.
+
+```{r}
+# Escolaridad promedio según país de nacimiento
+
+ece_depurada |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Observaciones_validas = sum(!is.na(Amos_educacion)),
+
+    Escolaridad_promedio = round(
+      weighted.mean(
+        Amos_educacion,
+        Factor_ponderacion,
+        na.rm = TRUE
+      ),
+      2
+    ),
+
+    .groups = "drop"
+  )
+```
+
+
+### Distribución de los años de escolaridad
+
+Dada la diferencia encontrada en los años promedio
+de escolaridad, se analizará su distribución mediante
+tres intervalos: de 0 a 6 años, de 7 a 11 años y
+12 años o más. Se calcularán porcentajes ponderados
+para identificar la concentración de trabajadores
+en cada grupo.
+
+```{r}
+# Clasificar los años de escolaridad
+
+ece_escolaridad <- ece_depurada |>
+  filter(!is.na(Amos_educacion)) |>
+  mutate(
+    Grupo_escolaridad = case_when(
+      Amos_educacion <= 6 ~ "0 a 6 años",
+      Amos_educacion <= 11 ~ "7 a 11 años",
+      Amos_educacion >= 12 ~ "12 años o más"
+    )
+  )
+
+# Calcular porcentajes ponderados por país
+
+ece_escolaridad |>
+  group_by(Pais_nacimiento, Grupo_escolaridad) |>
+  summarise(
+    Peso_total = sum(Factor_ponderacion),
+    .groups = "drop_last"
+  ) |>
+  mutate(
+    Porcentaje = round(
+      Peso_total / sum(Peso_total) * 100, 2
+    )
+  ) |>
+  ungroup() |>
+  select(
+    Pais_nacimiento,
+    Grupo_escolaridad,
+    Porcentaje
+  )
+```
