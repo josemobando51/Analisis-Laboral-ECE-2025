@@ -492,3 +492,199 @@ ece_escolaridad |>
     Porcentaje
   )
 ```
+
+
+# Fase III. Análisis descriptivo de los ingresos laborales
+
+En esta fase se comparan los ingresos brutos por hora
+de las personas ocupadas de 15 años o más, nacidas
+en Costa Rica y Nicaragua. Se analizarán los
+promedios, las medianas y las distribuciones de
+ingresos, así como su relación descriptiva con
+los años de escolaridad.
+
+## Comparación de ingresos promedio
+
+Se calcula el ingreso bruto promedio por hora de
+ambas poblaciones, utilizando los factores de
+ponderación de la ECE. Para este análisis se
+consideran únicamente las observaciones con
+información disponible sobre ingresos.
+
+```{r}
+# Calcular el ingreso promedio ponderado por país
+
+ece_depurada |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Observaciones_validas = sum(
+      !is.na(Ingreso_bruto_total_trabajo_hora)
+    ),
+
+    Ingreso_promedio = round(
+      weighted.mean(
+        as.numeric(Ingreso_bruto_total_trabajo_hora),
+        Factor_ponderacion,
+        na.rm = TRUE
+      ),
+      2
+    ),
+
+    .groups = "drop"
+  )
+```
+
+
+## Comparación entre la media y la mediana de ingresos
+
+Debido a la presencia de ingresos extremos identificados
+durante la depuración, se comparan la media y la mediana
+ponderadas de los ingresos brutos por hora. Esto permitirá
+examinar la influencia de los valores elevados sobre el
+promedio de cada población.
+
+```{r}
+# Cargar el paquete para calcular medianas ponderadas
+library(matrixStats)
+
+# Comparar media y mediana por país de nacimiento
+ece_depurada |>
+  filter(!is.na(Ingreso_bruto_total_trabajo_hora)) |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Media = round(
+      weighted.mean(
+        as.numeric(Ingreso_bruto_total_trabajo_hora),
+        Factor_ponderacion
+      ), 2
+    ),
+
+    Mediana = round(
+      weightedMedian(
+        as.numeric(Ingreso_bruto_total_trabajo_hora),
+        w = as.numeric(Factor_ponderacion)
+      ), 2
+    ),
+
+    .groups = "drop"
+  )
+```
+
+
+## Distribución de los ingresos laborales por hora
+
+Se analiza la concentración de trabajadores en
+distintos intervalos de ingresos brutos por hora.
+Se calculan porcentajes ponderados para comparar
+las distribuciones de ambas poblaciones,
+independientemente de sus tamaños muestrales.
+
+```{r}
+# Cargar paquete de visualización
+library(ggplot2)
+
+# Crear intervalos de ingresos
+ece_intervalos <- ece_depurada |>
+  filter(!is.na(Ingreso_bruto_total_trabajo_hora)) |>
+  mutate(
+    Intervalo = cut(
+      as.numeric(Ingreso_bruto_total_trabajo_hora),
+      breaks = c(0, 1000, 2000, 3000, 5000, 10000, Inf),
+      labels = c(
+        "Hasta 1000",
+        "1000-2000",
+        "2000-3000",
+        "3000-5000",
+        "5000-10000",
+        "Mas de 10000"
+      ),
+      include.lowest = TRUE
+    )
+  )
+
+# Calcular porcentajes ponderados
+distribucion_ingresos <- ece_intervalos |>
+  group_by(Pais_nacimiento, Intervalo) |>
+  summarise(
+    Peso_total = sum(Factor_ponderacion),
+    .groups = "drop_last"
+  ) |>
+  mutate(
+    Porcentaje = Peso_total / sum(Peso_total) * 100
+  ) |>
+  ungroup()
+
+# Gráfico comparativo
+ggplot(
+  distribucion_ingresos,
+  aes(
+    x = Intervalo,
+    y = Porcentaje,
+    fill = Pais_nacimiento
+  )
+) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Distribución de ingresos laborales por hora",
+    subtitle = "Personas ocupadas de 15 años o más",
+    x = "Ingreso bruto por hora (colones)",
+    y = "Porcentaje ponderado",
+    fill = "País de nacimiento"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 40, hjust = 1)
+  )
+```
+
+
+## Relación entre escolaridad e ingresos laborales
+
+A partir de las diferencias educativas identificadas
+en la fase II, se comparan los ingresos laborales
+por hora según los tres grupos de escolaridad
+previamente definidos.
+
+Se calculan la media y la mediana ponderadas para
+examinar si las personas con mayor escolaridad
+presentan ingresos superiores dentro de cada
+población.
+
+```{r}
+# Seleccionar observaciones con ingresos disponibles
+ece_escolaridad_ingresos <- ece_escolaridad |>
+  filter(!is.na(Ingreso_bruto_total_trabajo_hora)) |>
+  mutate(
+    Grupo_escolaridad = factor(
+      Grupo_escolaridad,
+      levels = c(
+        "0 a 6 años",
+        "7 a 11 años",
+        "12 años o más"
+      )
+    )
+  )
+
+# Comparar ingresos según escolaridad y país
+ece_escolaridad_ingresos |>
+  group_by(Pais_nacimiento, Grupo_escolaridad) |>
+  summarise(
+    Observaciones = n(),
+
+    Ingreso_promedio = round(
+      weighted.mean(
+        as.numeric(Ingreso_bruto_total_trabajo_hora),
+        Factor_ponderacion
+      ), 2
+    ),
+
+    Ingreso_mediano = round(
+      matrixStats::weightedMedian(
+        as.numeric(Ingreso_bruto_total_trabajo_hora),
+        w = as.numeric(Factor_ponderacion)
+      ), 2
+    ),
+
+    .groups = "drop"
+  )
+```
