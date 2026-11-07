@@ -17,3 +17,16 @@ config/*.env
 .quarto/
 *_cache/
 *_files/
+
+# Archivos generados por Quarto
+cod/*.html
+cod/*.pdf
+
+# Archivos temporales
+.quarto/
+*_cache/
+*_files/
+
+# Archivos temporales de Windows
+Thumbs.db
+Desktop.ini
