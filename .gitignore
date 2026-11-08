@@ -21,6 +21,8 @@ config/*.env
 # Archivos generados por Quarto
 cod/*.html
 cod/*.pdf
+# Excepción para conservar el informe final
+!cod/informe.pdf
 
 # Archivos temporales
 .quarto/

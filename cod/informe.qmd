@@ -1,27 +1,600 @@
+
 ---
-title: "Informe"
-author: "José Mario Murillo"
-format: typst
-editor: visual
+title: "Análisis comparativo de las condiciones laborales de las personas nacidas en Costa Rica y Nicaragua"
+subtitle: "IV trimestre de 2025"
+author: "José Mario Murillo Obando"
+lang: es
+format:
+  pdf:
+    documentclass: article
+    fontsize: 12pt
+    papersize: letter
+    geometry: margin=2.3cm
+    number-sections: false
+execute:
+  echo: false
+  warning: false
+  message: false
 ---
 
-## Quarto
+\vspace{-1.3 cm}
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+# 1. Introducción
 
-## Running Code
+El estudio de las condiciones laborales permite identificar diferencias en la participación de distintos grupos de población en el mercado de trabajo. En particular, el país de nacimiento constituye una dimensión relevante para examinar aspectos como la escolaridad, los ingresos, las actividades económicas y las condiciones de empleo.
 
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+Esta investigación compara descriptivamente las condiciones laborales de las personas ocupadas nacidas en Costa Rica y Nicaragua, residentes en Costa Rica, durante el IV trimestre de 2025. Mediante técnicas de estadística descriptiva y análisis exploratorio de datos, se identifican similitudes y diferencias entre ambas poblaciones, sin establecer relaciones causales.
+
+# 2. Objetivo
+
+Comparar descriptivamente las condiciones laborales de las personas ocupadas de 15 años o más, residentes en Costa Rica y nacidas en Costa Rica o Nicaragua, durante el IV trimestre de 2025, considerando sus características sociodemográficas, ingresos laborales, actividades económicas, formalidad del empleo y aseguramiento por trabajo.
+
+# 3. Datos e insumos
+
+Se utilizaron los microdatos de la Encuesta Continua de Empleo (ECE) del Instituto Nacional de Estadística y Censos (INEC), correspondientes al IV trimestre de 2025. La base original contiene 21 398 observaciones. Tras delimitar la población de estudio, se obtuvieron 8 071 registros: 7 341 de personas nacidas en Costa Rica y 730 nacidas en Nicaragua.
+
+Se analizaron variables de edad, sexo, escolaridad, ingreso bruto por hora, rama de actividad económica, formalidad laboral y aseguramiento por trabajo, incorporando el factor de ponderación de la encuesta.
+
+# 4. Metodología
+
+Se realizó un análisis cuantitativo, descriptivo y comparativo mediante R. El procedimiento comprendió la importación de los microdatos, selección de la población, depuración de variables y elaboración de indicadores. Los valores faltantes se excluyeron únicamente de los cálculos correspondientes.
+
+Se calcularon frecuencias, medias, medianas y porcentajes ponderados mediante los factores de expansión de la encuesta. Para la media y los porcentajes ponderados se utilizaron, respectivamente, las expresiones:
+
+$$
+\bar{x}_w=\frac{\sum_i w_i x_i}{\sum_i w_i}
+\qquad
+P_j=\frac{\sum_{i\in j}w_i}{\sum_i w_i}\times100
+$$
+
+donde $w_i$ representa el factor de ponderación, $x_i$ el valor observado y $j$ la categoría analizada dentro de cada población. Asimismo, se construyeron grupos de escolaridad y tablas cruzadas para examinar las diferencias laborales, sin aplicar modelos explicativos ni pruebas de hipótesis.
+
+
+# 5. Análisis y resultados
+
+## 5.1. Análisis Exploratorio de Datos (AED)
 
 ```{r}
-1 + 1
+#| include: false
+
+library(haven)
+library(dplyr)
+library(here)
+library(ggplot2)
+library(matrixStats)
+library(knitr)
+
+ece <- read_sav(
+  here("data", "ECE_IV_2025.sav")
+)
+
+ece_informe <- ece |>
+  filter(
+    Ocupado == 1,
+    Edad >= 15,
+    as_factor(Pais_nacimiento) %in%
+      c("Costa Rica", "Nicaragua")
+  ) |>
+  mutate(
+    Pais_nacimiento = as_factor(Pais_nacimiento),
+    Edad = na_if(as.numeric(Edad), 99),
+    Amos_educacion = na_if(as.numeric(Amos_educacion), 99)
+  )
+
+# Verificar que se obtuvieron las observaciones esperadas
+stopifnot(nrow(ece_informe) == 8071)
 ```
 
-You can add options to executable code like this
+
+La exploración de los microdatos permitió identificar
+comportamientos particulares en los ingresos laborales,
+la distribución de actividades económicas y el
+aseguramiento por trabajo. Se destacan tres hallazgos
+que complementan las comparaciones generales.
+
+### Escolaridad y mediana del ingreso laboral
+
+Se calcularon las medianas ponderadas del ingreso bruto
+por hora para tres grupos de escolaridad, diferenciando
+el país de nacimiento.
 
 ```{r}
-#| echo: false
-2 * 2
+#| fig-width: 6.3
+#| fig-height: 2.7
+#| fig-align: center
+
+library(ggplot2)
+
+tabla_educacion_ingresos <- ece_informe |>
+  filter(
+    !is.na(Amos_educacion),
+    !is.na(Ingreso_bruto_total_trabajo_hora)
+  ) |>
+  mutate(
+    Grupo_escolaridad = case_when(
+      Amos_educacion <= 6 ~ "0 a 6 años",
+      Amos_educacion <= 11 ~ "7 a 11 años",
+      TRUE ~ "12 años o más"
+    ),
+    Grupo_escolaridad = factor(
+      Grupo_escolaridad,
+      levels = c(
+        "0 a 6 años",
+        "7 a 11 años",
+        "12 años o más"
+      )
+    )
+  ) |>
+  group_by(Pais_nacimiento, Grupo_escolaridad) |>
+  summarise(
+    Observaciones = n(),
+    Media = weighted.mean(
+      as.numeric(Ingreso_bruto_total_trabajo_hora),
+      Factor_ponderacion
+    ),
+    Mediana = matrixStats::weightedMedian(
+      as.numeric(Ingreso_bruto_total_trabajo_hora),
+      w = as.numeric(Factor_ponderacion)
+    ),
+    .groups = "drop"
+  )
+
+ggplot(
+  tabla_educacion_ingresos,
+  aes(
+    x = Grupo_escolaridad,
+    y = Mediana,
+    color = Pais_nacimiento,
+    group = Pais_nacimiento
+  )
+) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.6) +
+  scale_y_continuous(
+    labels = scales::label_number(
+      prefix = "₡",
+      big.mark = " "
+    )
+  ) +
+  labs(
+    title = "Ingreso mediano por hora según escolaridad",
+    x = "Años de escolaridad",
+    y = "Colones por hora",
+    color = "Nacimiento",
+    caption = "Fuente: ECE, IV trimestre de 2025."
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold")
+  )
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+Entre las personas nacidas en Costa Rica, la mediana
+del ingreso aumenta con cada grupo educativo. En cambio,
+entre las nacidas en Nicaragua disminuye de ₡1 876,44
+(7 a 11 años) a ₡1 732,10 (12 años o más), mientras
+la media aumenta de ₡1 888,72 a ₡2 457,83.
+
+Este contraste resulta llamativo, aunque el último
+grupo nicaragüense contiene solamente 52 observaciones
+con ingresos válidos. Por ello, debe interpretarse
+con cautela y sin atribuir causalidad a la escolaridad.
+
+### Concentración en actividades económicas
+
+Se seleccionaron las cinco actividades con mayor
+participación ponderada de cada población. Al eliminar
+las coincidencias, se obtuvieron siete actividades
+distintas para su comparación.
+
+```{r}
+#| fig-width: 6.3
+#| fig-height: 2.6
+#| fig-align: center
+
+actividades <- ece_informe |>
+  mutate(
+    Rama_actividad =
+      as.character(haven::as_factor(Rama_actividad))
+  ) |>
+  filter(
+    !is.na(Rama_actividad),
+    Rama_actividad != "No especificado"
+  ) |>
+  group_by(Pais_nacimiento, Rama_actividad) |>
+  summarise(
+    Peso_total = sum(Factor_ponderacion),
+    .groups = "drop"
+  ) |>
+  group_by(Pais_nacimiento) |>
+  mutate(
+    Porcentaje = 100 * Peso_total / sum(Peso_total)
+  ) |>
+  ungroup()
+
+seleccionadas <- actividades |>
+  group_by(Pais_nacimiento) |>
+  slice_max(
+    order_by = Porcentaje,
+    n = 5,
+    with_ties = FALSE
+  ) |>
+  pull(Rama_actividad) |>
+  unique()
+
+actividades_grafico <- actividades |>
+  filter(Rama_actividad %in% seleccionadas) |>
+  mutate(
+    Actividad = case_when(
+      grepl("Comercio", Rama_actividad) ~ "Comercio",
+      grepl("manufactureras", Rama_actividad) ~ "Manufactura",
+      grepl("Agricultura", Rama_actividad) ~ "Agricultura",
+      grepl("Transporte", Rama_actividad) ~ "Transporte",
+      grepl("Enseñanza", Rama_actividad) ~ "Enseñanza",
+      grepl("Construcción", Rama_actividad) ~ "Construcción",
+      grepl("hogares", Rama_actividad, ignore.case = TRUE) ~
+        "Hogares empleadores",
+      TRUE ~ Rama_actividad
+    )
+  )
+
+ggplot(
+  actividades_grafico,
+  aes(
+    x = Porcentaje,
+    y = reorder(Actividad, Porcentaje, FUN = max),
+    fill = Pais_nacimiento
+  )
+) +
+  geom_col(position = "dodge", width = 0.7) +
+  labs(
+    title = "Principales actividades económicas",
+    x = "Porcentaje ponderado (%)",
+    y = NULL,
+    fill = "Nacimiento",
+    caption = "Fuente: ECE, IV trimestre de 2025."
+  ) +
+  theme_minimal(base_size = 10) +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold")
+  )
+```
+
+Las siete actividades seleccionadas representan
+aproximadamente el 59,00 % de las personas ocupadas
+nacidas en Costa Rica y el 79,41 % de las nacidas
+en Nicaragua, considerando únicamente los registros
+con actividad económica especificada.
+
+Esta diferencia de 20,41 puntos porcentuales
+muestra una mayor concentración de la población
+nacida en Nicaragua dentro del conjunto de
+actividades seleccionadas.
+
+### Aseguramiento dentro del empleo informal
+
+Se examinó la condición de aseguramiento por trabajo
+entre las personas clasificadas con empleo informal,
+con el fin de identificar si ambas condiciones
+coinciden necesariamente.
+
+```{r}
+datos_cruce <- ece_informe |>
+  mutate(
+    Formalidad = as.character(
+      haven::as_factor(Formalidad_informalidad)
+    ),
+    Seguro = as.character(
+      haven::as_factor(Condicion_aseguramiento)
+    )
+  ) |>
+  filter(
+    Formalidad == "Con empleo informal",
+    !is.na(Seguro)
+  )
+
+tabla_informales <- datos_cruce |>
+  mutate(
+    Tiene_seguro = !grepl(
+      "^(No|Sin)",
+      Seguro,
+      ignore.case = TRUE
+    )
+  ) |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Con_seguro = round(
+      100 * sum(
+        Factor_ponderacion[Tiene_seguro]
+      ) / sum(Factor_ponderacion), 2
+    ),
+    Sin_seguro = round(
+      100 * sum(
+        Factor_ponderacion[!Tiene_seguro]
+      ) / sum(Factor_ponderacion), 2
+    ),
+    .groups = "drop"
+  )
+
+knitr::kable(
+  tabla_informales,
+  col.names = c(
+    "Nacimiento",
+    "Con seguro (%)",
+    "Sin seguro (%)"
+  ),
+  caption = "Aseguramiento por trabajo dentro del empleo informal"
+)
+```
+
+
+Entre las personas con empleo informal, el 33,01 % de las nacidas en Costa Rica y el 22,39 % de las nacidas en Nicaragua cuenta con seguro por trabajo. Por tanto, informalidad laboral y ausencia de aseguramiento por trabajo no son condiciones equivalentes.
+
+
+
+## 5.2. Resultados de la metodología
+
+La aplicación de los indicadores estadísticos permitió
+comparar las características sociodemográficas, los ingresos
+laborales, la informalidad y el aseguramiento por trabajo
+de ambas poblaciones. La siguiente tabla presenta los
+principales resultados ponderados de la investigación.
+
+```{r}
+#| tbl-cap: "Indicadores sociodemográficos y laborales según país de nacimiento."
+
+# Calcular los indicadores generales
+resumen_general <- ece_informe |>
+  mutate(
+    Sexo = as.character(haven::as_factor(Sexo)),
+    Formalidad = as.character(
+      haven::as_factor(Formalidad_informalidad)
+    ),
+    Seguro = as.character(
+      haven::as_factor(Condicion_aseguramiento)
+    )
+  ) |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Edad_media = weighted.mean(
+      Edad, Factor_ponderacion, na.rm = TRUE
+    ),
+
+    Escolaridad_media = weighted.mean(
+      Amos_educacion,
+      Factor_ponderacion,
+      na.rm = TRUE
+    ),
+
+    Mujeres = 100 * sum(
+      Factor_ponderacion[Sexo == "Mujer"]
+    ) / sum(Factor_ponderacion),
+
+    Ingreso_medio = weighted.mean(
+      as.numeric(Ingreso_bruto_total_trabajo_hora),
+      Factor_ponderacion,
+      na.rm = TRUE
+    ),
+
+    Ingreso_mediano = matrixStats::weightedMedian(
+      as.numeric(
+        Ingreso_bruto_total_trabajo_hora[
+          !is.na(Ingreso_bruto_total_trabajo_hora)
+        ]
+      ),
+      w = as.numeric(
+        Factor_ponderacion[
+          !is.na(Ingreso_bruto_total_trabajo_hora)
+        ]
+      )
+    ),
+
+    Informalidad = 100 * sum(
+      Factor_ponderacion[
+        Formalidad == "Con empleo informal"
+      ]
+    ) / sum(Factor_ponderacion),
+
+    Sin_seguro = 100 * sum(
+      Factor_ponderacion[
+        Seguro == "No tiene seguro por trabajo"
+      ]
+    ) / sum(Factor_ponderacion),
+
+    .groups = "drop"
+  )
+
+# Organizar la tabla para facilitar la comparación
+cr <- resumen_general |>
+  filter(Pais_nacimiento == "Costa Rica")
+
+ni <- resumen_general |>
+  filter(Pais_nacimiento == "Nicaragua")
+
+tabla_resumen <- data.frame(
+  Indicador = c(
+    "Edad media (años)",
+    "Escolaridad media (años)",
+    "Mujeres entre ocupados (%)",
+    "Ingreso medio por hora (₡)",
+    "Ingreso mediano por hora (₡)",
+    "Empleo informal (%)",
+    "Sin seguro por trabajo (%)"
+  ),
+  "Costa Rica" = round(c(
+    cr$Edad_media,
+    cr$Escolaridad_media,
+    cr$Mujeres,
+    cr$Ingreso_medio,
+    cr$Ingreso_mediano,
+    cr$Informalidad,
+    cr$Sin_seguro
+  ), 2),
+  "Nicaragua" = round(c(
+    ni$Edad_media,
+    ni$Escolaridad_media,
+    ni$Mujeres,
+    ni$Ingreso_medio,
+    ni$Ingreso_mediano,
+    ni$Informalidad,
+    ni$Sin_seguro
+  ), 2),
+  check.names = FALSE
+)
+
+knitr::kable(
+  tabla_resumen,
+  digits = 2,
+  align = c("l", "r", "r"),
+  booktabs = TRUE
+)
+```
+
+Los resultados muestran edades promedio semejantes entre
+ambas poblaciones, cercanas a los 41 años. Sin embargo,
+se identifican diferencias en la escolaridad, con
+10,72 años promedio entre las personas nacidas en Costa Rica
+y 7,44 entre las nacidas en Nicaragua.
+
+El ingreso bruto promedio ponderado por hora es de
+₡2 947,14 para las personas nacidas en Costa Rica y
+₡1 912,77 para las nacidas en Nicaragua. La comparación
+de medianas presenta una diferencia menor:
+₡2 138,40 frente a ₡1 824,32, respectivamente.
+
+Finalmente, la informalidad laboral alcanza el 36,47 %
+entre las personas nacidas en Costa Rica y el 48,58 %
+entre las nacidas en Nicaragua. La ausencia de seguro
+por trabajo también es mayor en esta última población:
+37,75 % frente al 25,08 %. Estas diferencias son
+descriptivas y no permiten establecer relaciones causales.
+
+
+
+### Escolaridad y formalidad laboral
+
+Como análisis complementario, se examinó la distribución
+de la escolaridad y la proporción de empleo informal
+dentro de cada grupo educativo. Para ello, se utilizaron
+las categorías de 0 a 6, de 7 a 11 y de 12 años o más.
+
+```{r}
+#| results: asis
+
+tabla_escolaridad_formalidad <- ece_informe |>
+  mutate(
+    Formalidad = as.character(
+      haven::as_factor(Formalidad_informalidad)
+    ),
+    Grupo_escolaridad = case_when(
+      Amos_educacion <= 6 ~ "0 a 6 años",
+      Amos_educacion <= 11 ~ "7 a 11 años",
+      Amos_educacion >= 12 ~ "12 años o más"
+    ),
+    Grupo_escolaridad = factor(
+      Grupo_escolaridad,
+      levels = c(
+        "0 a 6 años",
+        "7 a 11 años",
+        "12 años o más"
+      )
+    )
+  ) |>
+  filter(
+    !is.na(Grupo_escolaridad),
+    !is.na(Formalidad)
+  ) |>
+  group_by(Pais_nacimiento, Grupo_escolaridad) |>
+  summarise(
+    Observaciones = n(),
+    Peso_total = sum(Factor_ponderacion),
+    Informalidad = 100 * sum(
+      Factor_ponderacion[
+        Formalidad == "Con empleo informal"
+      ]
+    ) / sum(Factor_ponderacion),
+    .groups = "drop"
+  ) |>
+  group_by(Pais_nacimiento) |>
+  mutate(
+    Participacion = 100 * Peso_total / sum(Peso_total)
+  ) |>
+  ungroup() |>
+  arrange(Pais_nacimiento, Grupo_escolaridad)
+
+# Generar la tabla con su título automático
+tabla_latex <- knitr::kable(
+  tabla_escolaridad_formalidad |>
+    select(
+      Pais_nacimiento,
+      Grupo_escolaridad,
+      Participacion,
+      Informalidad
+    ),
+  format = "latex",
+  digits = 2,
+  col.names = c(
+    "Nacimiento",
+    "Escolaridad",
+    "Distribución (%)",
+    "Informalidad (%)"
+  ),
+  caption = "Escolaridad e informalidad laboral según país de nacimiento",
+  booktabs = TRUE,
+  longtable = FALSE,
+  linesep = ""
+)
+
+# Priorizar su ubicación junto al texto correspondiente
+tabla_latex <- sub(
+  "\\begin{table}",
+  "\\begin{table}[!h]",
+  tabla_latex,
+  fixed = TRUE
+)
+
+cat(tabla_latex, sep = "\n")
+```
+
+En cuanto a la distribución educativa, el 36,46 %
+de las personas ocupadas nacidas en Costa Rica posee
+12 años o más de escolaridad, frente al 10,30 %
+de las nacidas en Nicaragua. En contraste, el grupo
+de 0 a 6 años representa el 25,25 % y el 48,74 %
+de ambas poblaciones, respectivamente.
+
+La informalidad presenta comportamientos diferentes
+según escolaridad. Entre las personas nacidas en
+Costa Rica, disminuye del 58,54 % en el grupo de
+0 a 6 años al 16,71 % en el de 12 años o más,
+una diferencia de 41,83 puntos porcentuales.
+
+Entre las nacidas en Nicaragua, la proporción pasa
+del 52,80 % al 44,43 %, una reducción de apenas
+8,37 puntos porcentuales entre los mismos grupos.
+En consecuencia, la relación descriptiva entre
+escolaridad y formalidad laboral presenta una
+intensidad diferente en ambas poblaciones.
+
+Estos resultados no implican que la escolaridad
+determine por sí sola la formalidad del empleo.
+Asimismo, las estimaciones del grupo nicaragüense
+de mayor escolaridad deben interpretarse con
+cautela debido a sus 55 observaciones.
+
+
+# 6. Conclusiones
+
+1. Las personas ocupadas nacidas en Costa Rica presentan mayores niveles promedio de escolaridad e ingresos laborales. Sin embargo, entre las nacidas en Nicaragua, la mediana salarial del grupo con mayor escolaridad disminuye respecto al grupo anterior, un resultado que debe interpretarse con cautela.
+
+2. Las siete actividades económicas seleccionadas representan el 59,00 % de la población ocupada nacida en Costa Rica y el 79,41 % de la nacida en Nicaragua, evidenciando diferencias en su distribución sectorial.
+
+3. La población nacida en Nicaragua presenta mayor informalidad laboral y menor aseguramiento por trabajo. No obstante, se identificó que parte de las personas con empleo informal sí posee seguro por trabajo, por lo que ambas condiciones no deben considerarse equivalentes.
+
+# 7. Referencias
+
+Instituto Nacional de Estadística y Censos (INEC). (2025). *Encuesta Continua de Empleo (ECE), IV trimestre de 2025* [Base de microdatos]. https://sistemas.inec.cr/pad5/index.php/catalog/369
+
+
