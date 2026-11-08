@@ -688,3 +688,152 @@ ece_escolaridad_ingresos |>
     .groups = "drop"
   )
 ```
+
+
+# Fase IV. Análisis de actividades económicas
+
+En esta fase se analiza la distribución de las
+personas ocupadas de 15 años o más, nacidas en
+Costa Rica y Nicaragua, según la actividad
+económica en la que se desempeñan.
+
+Se busca identificar las principales actividades
+económicas de cada población y comparar sus
+distribuciones mediante porcentajes ponderados.
+
+## Principales actividades económicas por país
+
+Se identifican las cinco actividades económicas
+con mayor representación dentro de cada población,
+utilizando los factores de ponderación de la ECE.
+
+```{r}
+# Calcular la distribución de actividades económicas
+distribucion_actividades <- ece_depurada |>
+  filter(!is.na(Rama_actividad)) |>
+  group_by(Pais_nacimiento, Rama_actividad) |>
+  summarise(
+    Observaciones = n(),
+    Peso_total = sum(Factor_ponderacion),
+    .groups = "drop_last"
+  ) |>
+  mutate(
+    Porcentaje = round(
+      Peso_total / sum(Peso_total) * 100, 2
+    )
+  ) |>
+  ungroup()
+
+# Seleccionar las cinco actividades principales
+distribucion_actividades |>
+  group_by(Pais_nacimiento) |>
+  slice_max(
+    order_by = Porcentaje,
+    n = 5,
+    with_ties = FALSE
+  ) |>
+  arrange(Pais_nacimiento, desc(Porcentaje)) |>
+  ungroup() |>
+  select(
+    Pais_nacimiento,
+    Rama_actividad,
+    Observaciones,
+    Porcentaje
+  )
+```
+
+
+## Comparación de las principales actividades económicas
+
+Para facilitar la comparación, se seleccionan las cinco
+actividades económicas con mayor participación ponderada
+en cada población. Posteriormente, se reúnen las
+actividades seleccionadas y se eliminan las coincidencias.
+
+Este procedimiento permite comparar siete actividades
+económicas distintas, utilizando el mismo criterio de
+selección para ambos países de nacimiento.
+
+```{r}
+library(ggplot2)
+
+# Identificar las cinco actividades principales de cada país
+actividades_seleccionadas <- distribucion_actividades |>
+  group_by(Pais_nacimiento) |>
+  slice_max(
+    order_by = Porcentaje,
+    n = 5,
+    with_ties = FALSE
+  ) |>
+  pull(Rama_actividad) |>
+  unique()
+
+# Calcular qué porcentaje de cada población
+# representan las actividades seleccionadas
+distribucion_actividades |>
+  group_by(Pais_nacimiento) |>
+  summarise(
+    Cobertura = round(
+      100 * sum(
+        Peso_total[Rama_actividad %in% actividades_seleccionadas]
+      ) / sum(Peso_total),
+      2
+    ),
+    .groups = "drop"
+  )
+
+# Preparar los datos del gráfico
+comparacion_actividades <- distribucion_actividades |>
+  filter(Rama_actividad %in% actividades_seleccionadas)
+
+# Gráfico comparativo
+ggplot(
+  comparacion_actividades,
+  aes(
+    x = Porcentaje,
+    y = reorder(Rama_actividad, Porcentaje, FUN = max),
+    fill = Pais_nacimiento
+  )
+) +
+  geom_col(
+    position = "dodge",
+    width = 0.7
+  ) +
+  scale_y_discrete(
+    labels = function(x) stringr::str_wrap(x, width = 35)
+  ) +
+  labs(
+    title = "Principales actividades económicas",
+    subtitle = "Personas ocupadas nacidas en Costa Rica y Nicaragua",
+    x = "Porcentaje ponderado (%)",
+    y = NULL,
+    fill = "País de nacimiento",
+    caption = "Fuente: ECE, IV trimestre de 2025."
+  ) +
+  theme_minimal()
+```
+
+
+
+## Interpretación de los resultados
+
+La distribución de las actividades económicas muestra diferencias
+entre las personas ocupadas nacidas en Costa Rica y Nicaragua.
+Entre las nacidas en Nicaragua destaca una mayor participación
+relativa en construcción (18,89 %), agricultura (17,40 %) y
+actividades de los hogares como empleadores (12,65 %).
+Por su parte, entre las nacidas en Costa Rica sobresalen el
+comercio (15,07 %), las industrias manufactureras (11,86 %)
+y la agricultura (8,25 %).
+
+Para la comparación gráfica se seleccionaron las cinco actividades
+con mayor participación ponderada de cada población. Al eliminar
+las coincidencias, se obtuvieron siete actividades distintas,
+que representan aproximadamente el 59,00 % de la población
+ocupada nacida en Costa Rica y el 79,41 % de la nacida en Nicaragua,
+considerando los registros con actividad especificada.
+
+Estos resultados permiten identificar patrones diferenciados
+de distribución sectorial. Sin embargo, no permiten establecer
+relaciones causales ni determinar, por sí solos, diferencias
+en las condiciones de calidad del empleo.
