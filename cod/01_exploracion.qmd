@@ -837,3 +837,196 @@ Estos resultados permiten identificar patrones diferenciados
 de distribución sectorial. Sin embargo, no permiten establecer
 relaciones causales ni determinar, por sí solos, diferencias
 en las condiciones de calidad del empleo.
+
+
+
+# Fase V. Formalidad laboral y condición de aseguramiento
+
+En esta fase se comparan las condiciones de formalidad
+laboral y aseguramiento de las personas ocupadas de
+15 años o más nacidas en Costa Rica y Nicaragua,
+durante el IV trimestre de 2025.
+
+## Distribución de la formalidad laboral
+
+Se calcula la proporción ponderada de personas
+ocupadas según su condición de formalidad laboral,
+distinguiendo entre ambos países de nacimiento.
+
+```{r}
+# Distribución ponderada de la formalidad laboral
+
+distribucion_formalidad <- ece_depurada |>
+  filter(!is.na(Formalidad_informalidad)) |>
+  group_by(Pais_nacimiento, Formalidad_informalidad) |>
+  summarise(
+    Observaciones = n(),
+    Peso_total = sum(Factor_ponderacion),
+    .groups = "drop"
+  ) |>
+  group_by(Pais_nacimiento) |>
+  mutate(
+    Porcentaje = round(
+      Peso_total / sum(Peso_total) * 100,
+      2
+    )
+  ) |>
+  ungroup() |>
+  select(
+    Pais_nacimiento,
+    Formalidad_informalidad,
+    Observaciones,
+    Porcentaje
+  )
+
+distribucion_formalidad
+```
+
+## Formalidad laboral según escolaridad
+
+Se compara la proporción de empleo formal e informal
+según tres grupos de escolaridad: de 0 a 6 años,
+de 7 a 11 años y de 12 años o más.
+
+Los porcentajes se calculan dentro de cada combinación
+de país de nacimiento y grupo de escolaridad,
+utilizando los factores de ponderación.
+
+```{r}
+formalidad_escolaridad <- ece_escolaridad |>
+  filter(!is.na(Formalidad_informalidad)) |>
+  mutate(
+    Grupo_escolaridad = factor(
+      Grupo_escolaridad,
+      levels = c(
+        "0 a 6 años",
+        "7 a 11 años",
+        "12 años o más"
+      )
+    )
+  ) |>
+  group_by(Pais_nacimiento, Grupo_escolaridad) |>
+  summarise(
+    Observaciones = n(),
+    Porcentaje_formal = round(
+      100 * sum(
+        Factor_ponderacion[
+          Formalidad_informalidad == "Con empleo formal"
+        ]
+      ) / sum(Factor_ponderacion),
+      2
+    ),
+    Porcentaje_informal = round(
+      100 * sum(
+        Factor_ponderacion[
+          Formalidad_informalidad == "Con empleo informal"
+        ]
+      ) / sum(Factor_ponderacion),
+      2
+    ),
+    .groups = "drop"
+  )
+
+formalidad_escolaridad
+```
+
+
+
+## Condición de aseguramiento según país de nacimiento
+
+Se analiza la distribución ponderada de las distintas
+condiciones de aseguramiento entre las personas ocupadas
+nacidas en Costa Rica y Nicaragua.
+
+```{r}
+distribucion_aseguramiento <- ece_depurada |>
+  filter(!is.na(Condicion_aseguramiento)) |>
+  group_by(Pais_nacimiento, Condicion_aseguramiento) |>
+  summarise(
+    Observaciones = n(),
+    Peso_total = sum(Factor_ponderacion),
+    .groups = "drop"
+  ) |>
+  group_by(Pais_nacimiento) |>
+  mutate(
+    Porcentaje = round(
+      Peso_total / sum(Peso_total) * 100,
+      2
+    )
+  ) |>
+  ungroup() |>
+  select(
+    Pais_nacimiento,
+    Condicion_aseguramiento,
+    Observaciones,
+    Porcentaje
+  )
+
+distribucion_aseguramiento
+```
+
+
+
+## Relación entre formalidad laboral y aseguramiento
+
+Se analiza la condición de aseguramiento por trabajo
+de las personas ocupadas según su clasificación laboral
+como formales o informales, distinguiendo entre las
+poblaciones nacidas en Costa Rica y Nicaragua.
+
+Los porcentajes se calculan dentro de cada combinación
+de país de nacimiento y condición de formalidad laboral.
+
+```{r}
+formalidad_aseguramiento <- ece_depurada |>
+  filter(
+    !is.na(Formalidad_informalidad),
+    !is.na(Condicion_aseguramiento)
+  ) |>
+  group_by(
+    Pais_nacimiento,
+    Formalidad_informalidad,
+    Condicion_aseguramiento
+  ) |>
+  summarise(
+    Observaciones = n(),
+    Peso_total = sum(Factor_ponderacion),
+    .groups = "drop"
+  ) |>
+  group_by(Pais_nacimiento, Formalidad_informalidad) |>
+  mutate(
+    Porcentaje = round(
+      100 * Peso_total / sum(Peso_total),
+      2
+    )
+  ) |>
+  ungroup() |>
+  select(
+    Pais_nacimiento,
+    Formalidad_informalidad,
+    Condicion_aseguramiento,
+    Observaciones,
+    Porcentaje
+  )
+
+formalidad_aseguramiento
+```
+
+## Interpretación de la formalidad y el aseguramiento
+
+Los resultados muestran que la población ocupada nacida en
+Nicaragua presenta una mayor proporción de empleo informal
+(48,58 %) que la nacida en Costa Rica (36,47 %). Asimismo,
+la ausencia de seguro por trabajo alcanza el 37,75 % entre
+las personas nacidas en Nicaragua, frente al 25,08 % entre
+las nacidas en Costa Rica.
+
+Al examinar conjuntamente ambas variables, se observa que
+el 33,01 % de las personas con empleo informal nacidas en
+Costa Rica posee seguro por trabajo. Esta proporción es
+del 22,39 % entre las nacidas en Nicaragua.
+
+Por tanto, la clasificación de empleo informal no implica
+necesariamente la ausencia de seguro por trabajo. Los
+resultados evidencian diferencias descriptivas entre ambas
+poblaciones, sin permitir establecer relaciones causales.
