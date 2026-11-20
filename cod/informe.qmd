@@ -598,3 +598,12 @@ cautela debido a sus 55 observaciones.
 Instituto Nacional de Estadística y Censos (INEC). (2025). *Encuesta Continua de Empleo (ECE), IV trimestre de 2025* [Base de microdatos]. https://sistemas.inec.cr/pad5/index.php/catalog/369
 
 
+## Anexos
+
+### Anexo 1. Repositorio de GitHub
+
+El código y los archivos complementarios utilizados
+en el desarrollo de esta investigación se encuentran
+disponibles en el siguiente repositorio público:
+
+https://github.com/josemobando51/Analisis-Laboral-ECE-2025
